@@ -201,18 +201,18 @@ function playSound(sound) {
 }
 
 function drawIntroScreen() {
-  textAlign(LEFT, BASELINE);
+  textAlign(CENTER, BASELINE);
   fill(255);
   textSize(70);
-  text("SPRITR QUEST", 500, 300);
+  text("SPRITR QUEST", width / 2, 300);
   fill(125);
   textSize(30);
-  text("Arrow to Move, X shoot water, space restart, z sprint, r reselect", 430, 380);
-  text("Press 1 for Easy, 2 for Normal, 3 for Hard", 420, 430);
-  text(`Selected Difficulty: ${getDifficultyName()}`, 480, 480);
+  text("Arrow to Move, X shoot water, space restart, z sprint, r reselect", width / 2, 380);
+  text("Press 1 for Easy, 2 for Normal, 3 for Hard", width / 2, 430);
+  text(`Selected Difficulty: ${getDifficultyName()}`, width / 2, 480);
   fill(255);
   textSize(50);
-  text("Press [SPACEBAR] to play", 500, 560);
+  text("Press [SPACEBAR] to play", width / 2, 560);
   timerStart = millis();
   if (resetMageRequested) startNewGame();
 }
