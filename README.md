@@ -22,6 +22,15 @@ Then open <http://localhost:8000>.
 - Space: start or restart
 - R: return to the main menu
 
+## Progression
+
+- Defeated wizards drop bones that grant coins and experience.
+- Bone coin rewards are 2 on Easy, 3 on Normal, and 5 on Hard.
+- Bone experience rewards are 5 on Easy, 7 on Normal, and 10 on Hard.
+- Each level increases movement speed by 0.5 and reduces shot and sprint cooldowns by 8%.
+- Movement speed is capped at 14, and cooldowns cannot fall below 50% of their base values.
+- The first level requires 20 XP; each later level requires 10 more XP than the previous one.
+
 ## Publish with GitHub Pages
 
 1. Create a public GitHub repository named `SpriteQuest`.

@@ -8,17 +8,23 @@ const SPRITE_HEIGHT = 50;
 const MAP_COUNT = 4;
 const GAME_WIDTH = 1500;
 const GAME_HEIGHT = 800;
+const ENEMY_SPAWN_OFFSETS = [0, 250, -250, 500, -500];
+const BASE_MOVE_SPEED = 7;
+const BASE_SHOT_COOLDOWN = 18;
+const BASE_SPRINT_COOLDOWN = 90;
 
 let state = GameState.START;
 let selectedDifficulty = Difficulty.NORMAL;
 let timerStart = 0;
 const waitTime = 1000;
 let world, mage, enemies = [], collectibles = [], projectiles = [], waterProjectiles = [];
-let leftPressed = false, rightPressed = false, jumpPressed = false;
-let resetMageRequested = false, resetGameRequested = false;
-let rows = 0, cols = 0, worldWidth = 0, worldHeight = 0;
+const heldKeys = new Set();
+let jumpQueued = false;
+let resetMageRequested = false;
+let worldWidth = 0, worldHeight = 0;
 let viewX = 0, viewY = 0, coinScore = 0, mapNumber = 1;
-let images = {}, sounds = {}, mapLines = {};
+let playerLevel = 1, experience = 0;
+const images = {}, sounds = {}, mapLines = {};
 
 function preload() {
   const imageFiles = ["mageL", "mageR", "mageSprintL", "mageSprintR", "wizardL", "wizardR", "red_brick", "snow", "brown_brick", "crate", "gold1", "gem1", "magma", "water", "bone"];
@@ -37,11 +43,16 @@ function setup() {
   textFont("system-ui");
   mage = new Mage(250, 400);
   loadLevel(1);
+  window.addEventListener("keydown", handleKeyDown, { passive: false });
+  window.addEventListener("keyup", handleKeyUp, { passive: false });
+  window.addEventListener("blur", clearInputState);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) clearInputState();
+  });
 }
 
 function draw() {
   background(0);
-  resetGameIfRequested();
   if (state === GameState.START) drawIntroScreen();
   else if (state === GameState.LOADING) drawLevelScreen();
   else if (state === GameState.PLAYING) drawPlaying();
@@ -96,8 +107,33 @@ function getEnemyCount() {
   return selectedDifficulty === Difficulty.EASY ? 1 : selectedDifficulty === Difficulty.HARD ? 3 : 2;
 }
 
-function getBoneValue() {
+function getBoneExperienceValue() {
   return selectedDifficulty === Difficulty.HARD ? 10 : selectedDifficulty === Difficulty.NORMAL ? 7 : 5;
+}
+
+function getBoneCoinValue() {
+  return floor(getBoneExperienceValue() / 2);
+}
+
+function getExperienceToNextLevel() {
+  return 20 + (playerLevel - 1) * 10;
+}
+
+function addExperience(amount) {
+  experience += amount;
+  while (experience >= getExperienceToNextLevel()) {
+    experience -= getExperienceToNextLevel();
+    playerLevel++;
+  }
+}
+
+function getPlayerMoveSpeed() {
+  return min(14, BASE_MOVE_SPEED + (playerLevel - 1) * .5);
+}
+
+function getPlayerCooldown(baseCooldown) {
+  const multiplier = max(.5, 1 - (playerLevel - 1) * .08);
+  return max(1, round(baseCooldown * multiplier));
 }
 
 function drawScore() {
@@ -108,6 +144,8 @@ function drawScore() {
   text(`Score:${coinScore}`, 20, 30);
   text(`Rank:${getRank()}`, 20, 60);
   text(`Difficulty:${getDifficultyName()}`, 20, 90);
+  text(`Level:${playerLevel}`, 20, 120);
+  text(`XP:${experience}/${getExperienceToNextLevel()}`, 20, 150);
   mage.drawCooldownTime();
   pop();
 }
@@ -177,6 +215,7 @@ function checkCollectibleCollisions(character) {
     if (item.type === "coin" || item.type === "bone") {
       collectibles.splice(i, 1);
       coinScore += item.type === "coin" ? 1 : item.scoreValue;
+      if (item.type === "bone") addExperience(item.experienceValue);
       playSound(sounds.coin);
     } else if (item.type === "gem") {
       collectibles.splice(i, 1);
@@ -233,40 +272,34 @@ function drawLevelScreen() {
 }
 
 function drawVictoryScreen() {
-  textAlign(LEFT, BASELINE);
-  fill(255);
-  textSize(70);
-  text("You win!", 600, 300);
-  fill(125);
-  textSize(30);
-  text(`You earn ${coinScore} coin`, 550, 400);
-  text("Choose difficulty: 1 Easy, 2 Normal, 3 Hard", 420, 460);
-  text(`Selected Difficulty: ${getDifficultyName()}`, 500, 500);
-  fill(255);
-  textSize(50);
-  text("Press [SPACEBAR]", 500, 570);
-  if (resetMageRequested) startNewGame();
+  drawEndScreen("You win!", `You earn ${coinScore} coin`, "Press [SPACEBAR]", 500);
 }
 
 function drawLoseScreen() {
+  drawEndScreen("You Lose!", "You lost all coin", "Press [SPACEBAR] play again", 450);
+}
+
+function drawEndScreen(title, subtitle, prompt, promptX) {
   textAlign(LEFT, BASELINE);
   fill(255);
   textSize(70);
-  text("You Lose!", 600, 300);
+  text(title, 600, 300);
   fill(125);
   textSize(30);
-  text("You lost all coin", 550, 400);
+  text(subtitle, 550, 400);
   text("Choose difficulty: 1 Easy, 2 Normal, 3 Hard", 420, 460);
   text(`Selected Difficulty: ${getDifficultyName()}`, 500, 500);
   fill(255);
   textSize(50);
-  text("Press [SPACEBAR] play again", 450, 570);
+  text(prompt, promptX, 570);
   if (resetMageRequested) startNewGame();
 }
 
 function startNewGame() {
   mapNumber = 1;
   coinScore = 0;
+  playerLevel = 1;
+  experience = 0;
   timerStart = millis();
   state = GameState.LOADING;
   loadLevel(mapNumber);
@@ -279,11 +312,9 @@ function loadLevel(number) {
   waterProjectiles = [];
   enemies = [];
   const lines = mapLines[number];
-  rows = lines.length;
-  cols = lines[0].split(",").length;
-  worldWidth = cols * TILE_SIZE;
-  worldHeight = rows * TILE_SIZE;
   world = new World(lines);
+  worldWidth = world.cols * TILE_SIZE;
+  worldHeight = world.rows * TILE_SIZE;
   enemies = createEnemiesForMap();
   viewX = viewY = 0;
   resetMage();
@@ -298,52 +329,55 @@ function resetMage() {
 }
 
 function createEnemiesForMap() {
-  const result = [], offsets = [0, 250, -250, 500, -500];
+  const result = [];
   const spawnX = world.getEnemySpawnX();
-  for (let i = 0; i < min(getEnemyCount(), offsets.length); i++) {
-    const x = constrain(spawnX + offsets[i], 0, max(0, worldWidth - SPRITE_WIDTH));
-    result.push(new Enemy(x, world.findGroundY(x), getBoneValue()));
+  for (let i = 0; i < min(getEnemyCount(), ENEMY_SPAWN_OFFSETS.length); i++) {
+    const x = constrain(spawnX + ENEMY_SPAWN_OFFSETS[i], 0, max(0, worldWidth - SPRITE_WIDTH));
+    result.push(new Enemy(x, world.findGroundY(x), getBoneCoinValue(), getBoneExperienceValue()));
   }
   return result;
 }
 
 function resetEnemies() {
-  const offsets = [0, 250, -250, 500, -500], spawnX = world.getEnemySpawnX();
+  const spawnX = world.getEnemySpawnX();
   enemies.forEach((enemy, i) => {
-    enemy.x = constrain(spawnX + offsets[i], 0, max(0, worldWidth - SPRITE_WIDTH));
+    enemy.x = constrain(spawnX + ENEMY_SPAWN_OFFSETS[i], 0, max(0, worldWidth - SPRITE_WIDTH));
     enemy.y = world.findGroundY(enemy.x);
     enemy.resetState();
   });
 }
 
-function resetGameIfRequested() {
-  if (!resetGameRequested) return;
-  state = GameState.START;
-  resetGameRequested = false;
-  resetMageRequested = false;
+function clearInputState() {
+  heldKeys.clear();
+  jumpQueued = false;
+  if (mage) mage.xVelocity = 0;
 }
 
-function keyPressed(event) {
+function handleKeyDown(event) {
+  const code = event.code;
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "Space"].includes(code)) event.preventDefault();
   userStartAudio();
-  if ([LEFT_ARROW, RIGHT_ARROW, UP_ARROW, 32].includes(keyCode)) event?.preventDefault();
-  if (keyCode === LEFT_ARROW) leftPressed = true;
-  else if (keyCode === RIGHT_ARROW) rightPressed = true;
-  else if (keyCode === UP_ARROW) jumpPressed = true;
-  else if (key === "z" || key === "Z") mage.triggerSprint();
-  else if (key === "r" || key === "R") resetGameRequested = true;
-  else if (key === "1" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.EASY;
-  else if (key === "2" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.NORMAL;
-  else if (key === "3" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.HARD;
-  else if (key === "x" || key === "X") mage.shootWater();
-  else if (keyCode === 32) resetMageRequested = true;
-  return false;
+  const wasHeld = heldKeys.has(code);
+  heldKeys.add(code);
+
+  if (code === "ArrowUp" && !wasHeld) jumpQueued = true;
+  else if (code === "KeyZ" && !event.repeat) mage.triggerSprint();
+  else if (code === "KeyR" && !event.repeat && state === GameState.PLAYING) {
+    state = GameState.START;
+    resetMageRequested = false;
+    clearInputState();
+  }
+  else if (code === "Digit1" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.EASY;
+  else if (code === "Digit2" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.NORMAL;
+  else if (code === "Digit3" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.HARD;
+  else if (code === "KeyX") mage.shootWater();
+  else if (code === "Space" && !event.repeat) resetMageRequested = true;
 }
 
-function keyReleased() {
-  if (keyCode === LEFT_ARROW) leftPressed = false;
-  else if (keyCode === RIGHT_ARROW) rightPressed = false;
-  else if (keyCode === UP_ARROW) jumpPressed = false;
-  return false;
+function handleKeyUp(event) {
+  const code = event.code;
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "Space"].includes(code)) event.preventDefault();
+  heldKeys.delete(code);
 }
 
 class Character {
@@ -365,7 +399,7 @@ class Character {
       }
     }
     this.y = nextY;
-    const bottom = rows * TILE_SIZE - this.spriteHeight;
+    const bottom = world.rows * TILE_SIZE - this.spriteHeight;
     if (this.y > bottom) { this.y = bottom; this.yVelocity = 0; this.onGround = true; }
     if (this.y < 0) { this.y = 0; this.yVelocity = max(0, this.yVelocity); }
   }
@@ -373,7 +407,7 @@ class Character {
     if (this.onGround) { this.yVelocity = -13; playSound(sounds.jump); }
   }
   handleHorizontalMovement(nearby) {
-    this.x = constrain(this.x, 0, cols * TILE_SIZE);
+    this.x = constrain(this.x, 0, world.cols * TILE_SIZE);
     this.x += this.xVelocity;
     for (const p of nearby) {
       const overlap = this.x < p.x + p.size && this.x + this.spriteWidth > p.x && this.y < p.y + p.size && this.y + this.spriteHeight > p.y;
@@ -382,7 +416,7 @@ class Character {
       else if (this.xVelocity < 0) this.x = p.x + p.size;
       this.xVelocity = 0;
     }
-    this.x = constrain(this.x, 0, cols * TILE_SIZE - SPRITE_WIDTH);
+    this.x = constrain(this.x, 0, world.cols * TILE_SIZE - SPRITE_WIDTH);
   }
 }
 
@@ -390,16 +424,19 @@ class Mage extends Character {
   constructor(x, y) {
     super(x, y);
     this.facingRight = true;
-    this.shootCooldownFrames = 18; this.lastShotFrame = -18;
-    this.sprintCooldownFrames = 90; this.sprintDurationFrames = 10;
-    this.lastSprintFrame = -90; this.sprintStartFrame = -10; this.sprintSpeed = 16;
+    this.lastShotFrame = -BASE_SHOT_COOLDOWN;
+    this.sprintDurationFrames = 10;
+    this.lastSprintFrame = -BASE_SPRINT_COOLDOWN; this.sprintStartFrame = -10; this.sprintSpeed = 16;
   }
   setVelocity() {
+    const shouldJump = jumpQueued;
+    jumpQueued = false;
     if (this.isSprinting()) { this.xVelocity = this.facingRight ? this.sprintSpeed : -this.sprintSpeed; return; }
     this.xVelocity = 0;
-    if (leftPressed) { this.xVelocity -= 7; this.facingRight = false; }
-    if (rightPressed) { this.xVelocity += 7; this.facingRight = true; }
-    if (jumpPressed) this.jump();
+    const moveSpeed = getPlayerMoveSpeed();
+    if (heldKeys.has("ArrowLeft")) { this.xVelocity -= moveSpeed; this.facingRight = false; }
+    if (heldKeys.has("ArrowRight")) { this.xVelocity += moveSpeed; this.facingRight = true; }
+    if (shouldJump) this.jump();
   }
   display() {
     const sprite = this.isSprinting()
@@ -410,22 +447,24 @@ class Mage extends Character {
   }
   isSprinting() { return frameCount - this.sprintStartFrame < this.sprintDurationFrames; }
   triggerSprint() {
-    if (this.isSprinting() || frameCount - this.lastSprintFrame < this.sprintCooldownFrames) return;
-    if (leftPressed) this.facingRight = false;
-    else if (rightPressed) this.facingRight = true;
+    if (this.isSprinting() || frameCount - this.lastSprintFrame < getPlayerCooldown(BASE_SPRINT_COOLDOWN)) return;
+    if (heldKeys.has("ArrowLeft")) this.facingRight = false;
+    else if (heldKeys.has("ArrowRight")) this.facingRight = true;
     this.sprintStartFrame = this.lastSprintFrame = frameCount;
   }
-  resetSprintState() { this.sprintStartFrame = -this.sprintDurationFrames; this.lastSprintFrame = -this.sprintCooldownFrames; }
+  resetSprintState() { this.sprintStartFrame = -this.sprintDurationFrames; this.lastSprintFrame = -getPlayerCooldown(BASE_SPRINT_COOLDOWN); }
   shootWater() {
-    if (state !== GameState.PLAYING || frameCount - this.lastShotFrame < this.shootCooldownFrames) return;
+    if (state !== GameState.PLAYING || frameCount - this.lastShotFrame < getPlayerCooldown(BASE_SHOT_COOLDOWN)) return;
     const direction = this.facingRight ? 1 : -1;
     waterProjectiles.push(new WaterProjectile(direction > 0 ? this.x + 50 : this.x - 20, this.y + 20, direction * 10));
     this.lastShotFrame = frameCount;
   }
   drawCooldownTime() {
+    const shotCooldown = getPlayerCooldown(BASE_SHOT_COOLDOWN);
+    const sprintCooldown = getPlayerCooldown(BASE_SPRINT_COOLDOWN);
     const items = [
-      { x: width - 110, label: "X", name: "shot", color: [40, 120, 255], percent: constrain((frameCount - this.lastShotFrame) / this.shootCooldownFrames, 0, 1) },
-      { x: width - 50, label: "Z", name: "sprint", color: [255, 150, 40], percent: constrain((frameCount - this.lastSprintFrame) / this.sprintCooldownFrames, 0, 1) }
+      { x: width - 110, label: "X", name: "shot", color: [40, 120, 255], percent: constrain((frameCount - this.lastShotFrame) / shotCooldown, 0, 1) },
+      { x: width - 50, label: "Z", name: "sprint", color: [255, 150, 40], percent: constrain((frameCount - this.lastSprintFrame) / sprintCooldown, 0, 1) }
     ];
     for (const item of items) {
       stroke(210); strokeWeight(3); fill(235); circle(item.x, height - 50, 42);
@@ -437,13 +476,14 @@ class Mage extends Character {
 }
 
 class Enemy extends Character {
-  constructor(x, y, boneValue) {
+  constructor(x, y, boneCoinValue, boneExperienceValue) {
     super(x, y);
     this.enemyfacingRight = true; this.direction = 1; this.patrolSpeed = 3;
     this.turnAroundSpeed = 3000 / getEnemyCount() / getEnemyCount();
     this.waitTurnAround = 0; this.waitingToTurn = false;
     this.shootCooldownFrames = 100; this.lastShotFrame = -100;
-    this.maxHealth = 5; this.health = 5; this.droppedBone = null; this.boneValue = boneValue;
+    this.maxHealth = 5; this.health = this.maxHealth; this.droppedBone = null;
+    this.boneCoinValue = boneCoinValue; this.boneExperienceValue = boneExperienceValue;
   }
   isAlive() { return this.health > 0; }
   setVelocity() {
@@ -469,13 +509,17 @@ class Enemy extends Character {
   tryShootAt(target) {
     if (!this.isAlive() || frameCount - this.lastShotFrame < this.shootCooldownFrames) return;
     if (abs((target.y + 25) - (this.y + 25)) > 200) return;
-    const direction = target.x >= this.x ? 1 : -1;
+    const direction = this.enemyfacingRight ? 1 : -1;
     projectiles.push(new Projectile(direction > 0 ? this.x + 50 : this.x - 24, this.y + 17.5, direction * 7));
     this.enemyfacingRight = direction > 0; this.lastShotFrame = frameCount;
   }
-  takeDamage(amount) { this.health = max(0, this.health - amount); if (this.health === 0) this.dropBone(); }
+  takeDamage(amount) {
+    if (!this.isAlive()) return;
+    this.health = max(0, this.health - amount);
+    if (this.health === 0) this.dropBone();
+  }
   dropBone() {
-    this.droppedBone = new Collectible(this.x + 2.5, this.y + 5, images.bone, 45, "bone", this.boneValue);
+    this.droppedBone = new Collectible(this.x + 2.5, this.y + 5, images.bone, 45, "bone", this.boneCoinValue, this.boneExperienceValue);
     collectibles.push(this.droppedBone);
   }
   resetState() {
@@ -498,9 +542,11 @@ class Platform {
 }
 
 class Collectible {
-  constructor(x, y, img, size, type, scoreValue = 0) { Object.assign(this, { x, y, img, size, type, scoreValue }); }
+  constructor(x, y, img, size, type, scoreValue = 0, experienceValue = 0) {
+    Object.assign(this, { x, y, img, size, type, scoreValue, experienceValue });
+  }
   display() { image(this.img, this.x, this.y, this.size, this.size); }
-  collidesWith(c) { return c.x + c.spriteWidth > this.x && c.x < this.x + this.size && c.y + c.spriteHeight > this.y && c.y < this.y + this.size; }
+  collidesWith(c) { return rectanglesOverlap(this.x, this.y, this.size, this.size, c.x, c.y, c.spriteWidth, c.spriteHeight); }
 }
 
 class Projectile {
@@ -510,7 +556,7 @@ class Projectile {
   display() { image(images.magma, this.x, this.y, Projectile.SIZE, Projectile.SIZE); }
   hitsWall() { return world.isSolidAt(this.xVelocity > 0 ? this.x + Projectile.SIZE : this.x, this.y + Projectile.SIZE / 2); }
   isOffWorld() { return this.x + Projectile.SIZE < 0 || this.x > worldWidth || this.y + Projectile.SIZE < 0 || this.y > worldHeight; }
-  collidesWith(c) { return this.x + Projectile.SIZE > c.x && this.x < c.x + c.spriteWidth && this.y + Projectile.SIZE > c.y && this.y < c.y + c.spriteHeight; }
+  collidesWith(c) { return rectanglesOverlap(this.x, this.y, Projectile.SIZE, Projectile.SIZE, c.x, c.y, c.spriteWidth, c.spriteHeight); }
 }
 
 class WaterProjectile {
@@ -523,27 +569,31 @@ class WaterProjectile {
   collidesWith(target) {
     const size = target instanceof Projectile ? Projectile.SIZE : target.spriteWidth;
     const height = target instanceof Projectile ? Projectile.SIZE : target.spriteHeight;
-    return this.x + WaterProjectile.SIZE > target.x && this.x < target.x + size && this.y + WaterProjectile.SIZE > target.y && this.y < target.y + height;
+    return rectanglesOverlap(this.x, this.y, WaterProjectile.SIZE, WaterProjectile.SIZE, target.x, target.y, size, height);
   }
+}
+
+function rectanglesOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax + aw > bx && ax < bx + bw && ay + ah > by && ay < by + bh;
 }
 
 class World {
   constructor(lines) {
-    this.lines = lines; this.rows = lines.length; this.cols = lines[0].split(",").length;
+    this.rows = lines.length; this.cols = lines[0].split(",").length;
     this.tileGrid = Array.from({ length: this.cols }, () => Array(this.rows).fill(null));
-    this.enemySpawnX = 600; this.hasEnemySpawn = false;
-    this.createPlatforms();
+    this.enemySpawnX = null;
+    this.createPlatforms(lines);
   }
-  createPlatforms() {
+  createPlatforms(lines) {
     const tileImages = { "1": images.red_brick, "2": images.snow, "3": images.brown_brick, "4": images.crate, "8": images.water };
     const collectiblesByCode = { "5": [images.gold1, "coin"], "6": [images.gem1, "gem"], "7": [images.magma, "magma"] };
-    this.lines.forEach((line, row) => line.split(",").forEach((raw, col) => {
+    lines.forEach((line, row) => line.split(",").forEach((raw, col) => {
       const value = raw.trim();
       if (tileImages[value]) this.tileGrid[col][row] = new Platform(col * TILE_SIZE, row * TILE_SIZE, tileImages[value], TILE_SIZE);
       else if (collectiblesByCode[value]) {
         const [img, type] = collectiblesByCode[value];
         collectibles.push(new Collectible(col * TILE_SIZE, row * TILE_SIZE, img, TILE_SIZE, type));
-      } else if (value === "9") { this.enemySpawnX = col * TILE_SIZE; this.hasEnemySpawn = true; }
+      } else if (value === "9") this.enemySpawnX = col * TILE_SIZE;
     }));
   }
   drawTiles() { for (const column of this.tileGrid) for (const tile of column) if (tile) tile.display(); }
@@ -563,5 +613,5 @@ class World {
     for (let row = 0; row < this.rows; row++) if (this.tileGrid[col][row]) return this.tileGrid[col][row].y - SPRITE_HEIGHT;
     return this.rows * TILE_SIZE - SPRITE_HEIGHT;
   }
-  getEnemySpawnX() { return this.hasEnemySpawn ? this.enemySpawnX : 600; }
+  getEnemySpawnX() { return this.enemySpawnX ?? 600; }
 }
