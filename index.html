@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#14172d" />
+    <meta name="description" content="SpriteQuest — a browser platform adventure game." />
+    <title>SpriteQuest</title>
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/p5.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/addons/p5.sound.min.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>SpriteQuest</h1>
+        <p>Defeat the wizards, collect treasure, and reach the gem.</p>
+      </header>
+      <section id="game-shell" aria-label="SpriteQuest game canvas"></section>
+      <section class="controls" aria-label="Controls">
+        <span><kbd>←</kbd><kbd>→</kbd> Move</span>
+        <span><kbd>↑</kbd> Jump</span>
+        <span><kbd>X</kbd> Shoot</span>
+        <span><kbd>Z</kbd> Sprint</span>
+        <span><kbd>R</kbd> Menu</span>
+      </section>
+      <p class="hint">Click the game once if your browser blocks sound or keyboard input.</p>
+    </main>
+    <script src="sketch.js"></script>
+  </body>
+</html>
