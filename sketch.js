@@ -12,6 +12,7 @@ const ENEMY_SPAWN_OFFSETS = [0, 250, -250, 500, -500];
 const BASE_MOVE_SPEED = 7;
 const BASE_SHOT_COOLDOWN = 18;
 const BASE_SPRINT_COOLDOWN = 90;
+const ENDLESS_RESPAWN_DELAY = 3000;
 
 let state = GameState.START;
 let selectedDifficulty = Difficulty.NORMAL;
@@ -24,6 +25,7 @@ let resetMageRequested = false;
 let worldWidth = 0, worldHeight = 0;
 let viewX = 0, viewY = 0, coinScore = 0, mapNumber = 1;
 let playerLevel = 1, experience = 0;
+let endlessMode = false;
 const images = {}, sounds = {}, mapLines = {};
 
 function preload() {
@@ -70,6 +72,7 @@ function drawPlaying() {
   mage.setVelocity();
   mage.handleHorizontalMovement(nearby);
   mage.applyGravity(nearby);
+  updateEndlessRespawns();
   for (const enemy of enemies) {
     if (!enemy.isAlive()) continue;
     const enemyNearby = world.getNearByTiles(enemy);
@@ -105,6 +108,10 @@ function getDifficultyName() {
 
 function getEnemyCount() {
   return selectedDifficulty === Difficulty.EASY ? 1 : selectedDifficulty === Difficulty.HARD ? 3 : 2;
+}
+
+function getSpawnEnemyCount() {
+  return min(ENEMY_SPAWN_OFFSETS.length, getEnemyCount() + (endlessMode ? 2 : 0));
 }
 
 function getBoneExperienceValue() {
@@ -144,8 +151,10 @@ function drawScore() {
   text(`Score:${coinScore}`, 20, 30);
   text(`Rank:${getRank()}`, 20, 60);
   text(`Difficulty:${getDifficultyName()}`, 20, 90);
-  text(`Level:${playerLevel}`, 20, 120);
-  text(`XP:${experience}/${getExperienceToNextLevel()}`, 20, 150);
+  text(`Level:${mapNumber}`, 20, 120);
+  text(`Player Level:${playerLevel}`, 20, 150);
+  text(`XP:${experience}/${getExperienceToNextLevel()}`, 20, 180);
+  if (endlessMode) text("Mode:Endless", 20, 210);
   mage.drawCooldownTime();
   pop();
 }
@@ -273,6 +282,9 @@ function drawLevelScreen() {
 
 function drawVictoryScreen() {
   drawEndScreen("You win!", `You earn ${coinScore} coin`, "Press [SPACEBAR]", 500);
+  fill(255);
+  textSize(38);
+  text("Press [E] for Endless Mode", 460, 650);
 }
 
 function drawLoseScreen() {
@@ -296,6 +308,7 @@ function drawEndScreen(title, subtitle, prompt, promptX) {
 }
 
 function startNewGame() {
+  endlessMode = false;
   mapNumber = 1;
   coinScore = 0;
   playerLevel = 1;
@@ -303,6 +316,16 @@ function startNewGame() {
   timerStart = millis();
   state = GameState.LOADING;
   loadLevel(mapNumber);
+  resetMageRequested = false;
+}
+
+function startEndlessMode() {
+  endlessMode = true;
+  mapNumber = MAP_COUNT;
+  timerStart = millis();
+  state = GameState.LOADING;
+  loadLevel(mapNumber);
+  collectibles = collectibles.filter(item => item.type !== "gem");
   resetMageRequested = false;
 }
 
@@ -331,7 +354,7 @@ function resetMage() {
 function createEnemiesForMap() {
   const result = [];
   const spawnX = world.getEnemySpawnX();
-  for (let i = 0; i < min(getEnemyCount(), ENEMY_SPAWN_OFFSETS.length); i++) {
+  for (let i = 0; i < getSpawnEnemyCount(); i++) {
     const x = constrain(spawnX + ENEMY_SPAWN_OFFSETS[i], 0, max(0, worldWidth - SPRITE_WIDTH));
     result.push(new Enemy(x, world.findGroundY(x), getBoneCoinValue(), getBoneExperienceValue()));
   }
@@ -339,11 +362,22 @@ function createEnemiesForMap() {
 }
 
 function resetEnemies() {
+  enemies.forEach((enemy, index) => respawnEnemy(enemy, index));
+}
+
+function respawnEnemy(enemy, index) {
   const spawnX = world.getEnemySpawnX();
-  enemies.forEach((enemy, i) => {
-    enemy.x = constrain(spawnX + ENEMY_SPAWN_OFFSETS[i], 0, max(0, worldWidth - SPRITE_WIDTH));
-    enemy.y = world.findGroundY(enemy.x);
-    enemy.resetState();
+  enemy.x = constrain(spawnX + ENEMY_SPAWN_OFFSETS[index], 0, max(0, worldWidth - SPRITE_WIDTH));
+  enemy.y = world.findGroundY(enemy.x);
+  enemy.resetState();
+}
+
+function updateEndlessRespawns() {
+  if (!endlessMode) return;
+  enemies.forEach((enemy, index) => {
+    if (!enemy.isAlive() && enemy.deathTime !== null && millis() - enemy.deathTime >= ENDLESS_RESPAWN_DELAY) {
+      respawnEnemy(enemy, index);
+    }
   });
 }
 
@@ -367,6 +401,7 @@ function handleKeyDown(event) {
     resetMageRequested = false;
     clearInputState();
   }
+  else if (code === "KeyE" && !event.repeat && state === GameState.VICTORY) startEndlessMode();
   else if (code === "Digit1" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.EASY;
   else if (code === "Digit2" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.NORMAL;
   else if (code === "Digit3" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.HARD;
@@ -484,6 +519,7 @@ class Enemy extends Character {
     this.shootCooldownFrames = 100; this.lastShotFrame = -100;
     this.maxHealth = 5; this.health = this.maxHealth; this.droppedBone = null;
     this.boneCoinValue = boneCoinValue; this.boneExperienceValue = boneExperienceValue;
+    this.deathTime = null;
   }
   isAlive() { return this.health > 0; }
   setVelocity() {
@@ -516,7 +552,10 @@ class Enemy extends Character {
   takeDamage(amount) {
     if (!this.isAlive()) return;
     this.health = max(0, this.health - amount);
-    if (this.health === 0) this.dropBone();
+    if (this.health === 0) {
+      this.deathTime = millis();
+      this.dropBone();
+    }
   }
   dropBone() {
     this.droppedBone = new Collectible(this.x + 2.5, this.y + 5, images.bone, 45, "bone", this.boneCoinValue, this.boneExperienceValue);
@@ -526,7 +565,7 @@ class Enemy extends Character {
     if (this.droppedBone) collectibles = collectibles.filter(item => item !== this.droppedBone);
     this.health = this.maxHealth; this.xVelocity = this.yVelocity = 0; this.direction = 1;
     this.enemyfacingRight = true; this.waitTurnAround = 0; this.waitingToTurn = false;
-    this.lastShotFrame = -this.shootCooldownFrames; this.droppedBone = null;
+    this.lastShotFrame = -this.shootCooldownFrames; this.droppedBone = null; this.deathTime = null;
   }
   display() {
     if (!this.isAlive()) return;

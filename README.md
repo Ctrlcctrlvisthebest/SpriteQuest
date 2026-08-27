@@ -31,6 +31,10 @@ Then open <http://localhost:8000>.
 - Movement speed is capped at 14, and cooldowns cannot fall below 50% of their base values.
 - The first level requires 20 XP; each later level requires 10 more XP than the previous one.
 
+## Endless mode
+
+After completing level 4, press **E** on the victory screen to enter Endless mode. Endless mode keeps the level 4 map, removes its exit gem, and adds two wizards beyond the selected difficulty's normal count (3 on Easy, 4 on Normal, and 5 on Hard). Each defeated wizard respawns after three seconds. Your score, player level, and experience carry over from the completed run.
+
 ## Publish with GitHub Pages
 
 1. Create a public GitHub repository named `SpriteQuest`.
