@@ -1,70 +1,9 @@
-:root {
-  color-scheme: dark;
-  font-family: Inter, ui-rounded, "SF Pro Rounded", system-ui, sans-serif;
-  background: #0c1021;
-  color: #f7f4ff;
-}
-
-* { box-sizing: border-box; }
-
-body {
-  min-height: 100vh;
+html, body {
   margin: 0;
-  background:
-    radial-gradient(circle at 20% 10%, #343a78 0, transparent 30rem),
-    linear-gradient(160deg, #0d1125, #18102c 70%, #271337);
+  padding: 0;
+  background: #000;
 }
 
-main {
-  width: min(96vw, 1500px);
-  margin: 0 auto;
-  padding: 24px 0 30px;
-}
-
-header { margin-bottom: 14px; }
-h1 { margin: 0; font-size: clamp(2rem, 5vw, 4rem); letter-spacing: -.05em; }
-header p, .hint { color: #c9c8dd; }
-header p { margin: 4px 0 0; }
-
-#game-shell {
-  overflow: hidden;
-  width: 100%;
-  aspect-ratio: 15 / 8;
-  border: 2px solid #8b83d7;
-  border-radius: 16px;
-  background: #171a33;
-  box-shadow: 0 24px 70px #0009;
-}
-
-canvas { display: block; width: 100% !important; height: 100% !important; }
-
-.controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px 22px;
-  padding: 18px 4px 8px;
-  color: #dddaf2;
-}
-
-kbd {
-  display: inline-block;
-  min-width: 28px;
-  margin-right: 3px;
-  padding: 4px 7px;
-  border: 1px solid #9089bd;
-  border-bottom-width: 3px;
-  border-radius: 6px;
-  background: #292844;
-  color: white;
-  font: inherit;
-  font-weight: 700;
-  text-align: center;
-}
-
-.hint { margin: 0 4px; font-size: .9rem; }
-
-@media (max-width: 640px) {
-  main { width: 100%; padding-top: 14px; }
-  header, .controls, .hint { margin-left: 14px; margin-right: 14px; }
-  #game-shell { border-width: 1px; border-radius: 0; }
+canvas {
+  display: block;
 }

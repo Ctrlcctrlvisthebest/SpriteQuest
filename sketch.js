@@ -40,7 +40,7 @@ function setup() {
 }
 
 function draw() {
-  background(20, 23, 45);
+  background(0);
   resetGameIfRequested();
   if (state === GameState.START) drawIntroScreen();
   else if (state === GameState.LOADING) drawLevelScreen();
@@ -55,6 +55,7 @@ function drawPlaying() {
   translate(-viewX, -viewY);
   world.drawTiles();
   const nearby = world.getNearByTiles(mage);
+  drawNearbyTiles(nearby);
   mage.setVelocity();
   mage.handleHorizontalMovement(nearby);
   mage.applyGravity(nearby);
@@ -101,15 +102,24 @@ function getBoneValue() {
 
 function drawScore() {
   push();
-  noStroke();
-  fill(0, 0, 0, 135);
-  rect(12, 12, 210, 110, 12);
-  fill(255);
-  textAlign(LEFT, TOP);
+  fill(0);
+  textAlign(LEFT, BASELINE);
   textSize(24);
-  text(`Score: ${coinScore}\nRank: ${getRank()}\nDifficulty: ${getDifficultyName()}`, 24, 22);
+  text(`Score:${coinScore}`, 20, 30);
+  text(`Rank:${getRank()}`, 20, 60);
+  text(`Difficulty:${getDifficultyName()}`, 20, 90);
   mage.drawCooldownTime();
   pop();
+}
+
+function drawNearbyTiles(nearby) {
+  rectMode(CORNER);
+  for (const platform of nearby) {
+    stroke(0);
+    strokeWeight(4);
+    noFill();
+    rect(platform.x, platform.y, platform.size, platform.size);
+  }
 }
 
 function updateCamera() {
@@ -190,63 +200,69 @@ function playSound(sound) {
   if (sound && sound.isLoaded() && getAudioContext().state === "running") sound.play();
 }
 
-function menuBackdrop() {
-  background(22, 25, 52);
-  noStroke();
-  for (let i = 0; i < 30; i++) {
-    fill(115, 104, 220, 35 + (i % 4) * 20);
-    circle((i * 181 + frameCount * .15) % width, (i * 97) % height, 12 + (i % 5) * 10);
-  }
-  textAlign(CENTER, CENTER);
-}
-
 function drawIntroScreen() {
-  menuBackdrop();
-  fill(255, 224, 105);
-  textStyle(BOLD);
-  textSize(92);
-  text("SPRITEQUEST", width / 2, 230);
-  fill(215, 212, 240);
-  textStyle(NORMAL);
-  textSize(28);
-  text("Arrow keys move · X shoots · Z sprints · R returns to menu", width / 2, 355);
-  text("Choose difficulty: 1 Easy · 2 Normal · 3 Hard", width / 2, 410);
-  fill(146, 224, 255);
-  textSize(32);
-  text(`Selected: ${getDifficultyName()}`, width / 2, 472);
+  textAlign(LEFT, BASELINE);
   fill(255);
-  textSize(48);
-  text("Press SPACE to play", width / 2, 575);
+  textSize(70);
+  text("SPRITR QUEST", 500, 300);
+  fill(125);
+  textSize(30);
+  text("Arrow to Move, X shoot water, space restart, z sprint, r reselect", 430, 380);
+  text("Press 1 for Easy, 2 for Normal, 3 for Hard", 420, 430);
+  text(`Selected Difficulty: ${getDifficultyName()}`, 480, 480);
+  fill(255);
+  textSize(50);
+  text("Press [SPACEBAR] to play", 500, 560);
   timerStart = millis();
   if (resetMageRequested) startNewGame();
 }
 
 function drawLevelScreen() {
-  menuBackdrop();
+  textAlign(LEFT, BASELINE);
   const percent = constrain((millis() - timerStart) / waitTime, 0, 1);
+  noFill();
+  rect(200, 500, 600, 20);
   fill(255);
-  textSize(58);
-  text(`Level ${mapNumber}`, width / 2, 300);
-  noFill(); stroke(255); strokeWeight(3);
-  rect(width / 2 - 300, 420, 600, 24, 12);
-  noStroke(); fill(104, 209, 255);
-  rect(width / 2 - 300, 420, 600 * percent, 24, 12);
-  fill(255); textSize(28);
-  text(`${floor(percent * 100)}%`, width / 2, 490);
+  textSize(40);
+  text(`Level${mapNumber}`, 650, 300);
+  rect(500, 400, 600 * percent, 20);
+  fill(255);
+  textSize(40);
+  text(`${floor(percent * 100)}%`, 700, 500);
   if (percent >= 1) state = GameState.PLAYING;
 }
 
-function endScreen(title, subtitle) {
-  menuBackdrop();
-  fill(255, 224, 105); textStyle(BOLD); textSize(80); text(title, width / 2, 260);
-  fill(215, 212, 240); textStyle(NORMAL); textSize(30); text(subtitle, width / 2, 380);
-  text(`Difficulty: ${getDifficultyName()} — press 1, 2, or 3 to change`, width / 2, 440);
-  fill(255); textSize(46); text("Press SPACE to play again", width / 2, 555);
+function drawVictoryScreen() {
+  textAlign(LEFT, BASELINE);
+  fill(255);
+  textSize(70);
+  text("You win!", 600, 300);
+  fill(125);
+  textSize(30);
+  text(`You earn ${coinScore} coin`, 550, 400);
+  text("Choose difficulty: 1 Easy, 2 Normal, 3 Hard", 420, 460);
+  text(`Selected Difficulty: ${getDifficultyName()}`, 500, 500);
+  fill(255);
+  textSize(50);
+  text("Press [SPACEBAR]", 500, 570);
   if (resetMageRequested) startNewGame();
 }
 
-function drawVictoryScreen() { endScreen("You win!", `You earned ${coinScore} coins`); }
-function drawLoseScreen() { endScreen("You lose!", "You lost all your coins"); }
+function drawLoseScreen() {
+  textAlign(LEFT, BASELINE);
+  fill(255);
+  textSize(70);
+  text("You Lose!", 600, 300);
+  fill(125);
+  textSize(30);
+  text("You lost all coin", 550, 400);
+  text("Choose difficulty: 1 Easy, 2 Normal, 3 Hard", 420, 460);
+  text(`Selected Difficulty: ${getDifficultyName()}`, 500, 500);
+  fill(255);
+  textSize(50);
+  text("Press [SPACEBAR] play again", 450, 570);
+  if (resetMageRequested) startNewGame();
+}
 
 function startNewGame() {
   mapNumber = 1;
