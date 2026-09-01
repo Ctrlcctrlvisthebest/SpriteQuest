@@ -110,6 +110,10 @@ function getEnemyCount() {
   return selectedDifficulty === Difficulty.EASY ? 1 : selectedDifficulty === Difficulty.HARD ? 3 : 2;
 }
 
+function getEnemyProjectileSpeed() {
+  return selectedDifficulty === Difficulty.EASY ? 5 : selectedDifficulty === Difficulty.HARD ? 9 : 7;
+}
+
 function getSpawnEnemyCount() {
   return min(ENEMY_SPAWN_OFFSETS.length, getEnemyCount() + (endlessMode ? 2 : 0));
 }
@@ -546,7 +550,8 @@ class Enemy extends Character {
     if (!this.isAlive() || frameCount - this.lastShotFrame < this.shootCooldownFrames) return;
     if (abs((target.y + 25) - (this.y + 25)) > 200) return;
     const direction = this.enemyfacingRight ? 1 : -1;
-    projectiles.push(new Projectile(direction > 0 ? this.x + 50 : this.x - 24, this.y + 17.5, direction * 7));
+    const projectileSpeed = getEnemyProjectileSpeed();
+    projectiles.push(new Projectile(direction > 0 ? this.x + 50 : this.x - 24, this.y + 17.5, direction * projectileSpeed));
     this.enemyfacingRight = direction > 0; this.lastShotFrame = frameCount;
   }
   takeDamage(amount) {

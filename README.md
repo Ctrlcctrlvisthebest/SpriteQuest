@@ -22,6 +22,8 @@ Then open <http://localhost:8000>.
 - Space: start or restart
 - R: return to the main menu
 
+Enemy magma projectiles travel at speed 5 on Easy, 7 on Normal, and 9 on Hard.
+
 ## Progression
 
 - Defeated wizards drop bones that grant coins and experience.
