@@ -256,7 +256,7 @@ function drawIntroScreen() {
   textAlign(CENTER, BASELINE);
   fill(255);
   textSize(70);
-  text("SPRITR QUEST", width / 2, 300);
+  text("SPRITE QUEST", width / 2, 300);
   fill(125);
   textSize(30);
   text("Arrow to Move, X shoot water, space restart, z sprint, r reselect", width / 2, 380);
