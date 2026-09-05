@@ -26,6 +26,9 @@ let worldWidth = 0, worldHeight = 0;
 let viewX = 0, viewY = 0, coinScore = 0, mapNumber = 1;
 let playerLevel = 1, experience = 0;
 let endlessMode = false;
+let customMap = null;
+let editorActive = false;
+let gameReady = false;
 const images = {}, sounds = {}, mapLines = {};
 
 function preload() {
@@ -45,6 +48,8 @@ function setup() {
   textFont("system-ui");
   mage = new Mage(250, 400);
   loadLevel(1);
+  gameReady = true;
+  window.dispatchEvent(new Event("spritequest-ready"));
   window.addEventListener("keydown", handleKeyDown, { passive: false });
   window.addEventListener("keyup", handleKeyUp, { passive: false });
   window.addEventListener("blur", clearInputState);
@@ -54,6 +59,7 @@ function setup() {
 }
 
 function draw() {
+  if (editorActive) return;
   background(0);
   if (state === GameState.START) drawIntroScreen();
   else if (state === GameState.LOADING) drawLevelScreen();
@@ -155,7 +161,7 @@ function drawScore() {
   text(`Score:${coinScore}`, 20, 30);
   text(`Rank:${getRank()}`, 20, 60);
   text(`Difficulty:${getDifficultyName()}`, 20, 90);
-  text(`Level:${mapNumber}`, 20, 120);
+  text(customMap ? "Level:Custom" : `Level:${mapNumber}`, 20, 120);
   text(`Player Level:${playerLevel}`, 20, 150);
   text(`XP:${experience}/${getExperienceToNextLevel()}`, 20, 180);
   if (endlessMode) text("Mode:Endless", 20, 210);
@@ -232,6 +238,7 @@ function checkCollectibleCollisions(character) {
       playSound(sounds.coin);
     } else if (item.type === "gem") {
       collectibles.splice(i, 1);
+      if (customMap) { state = GameState.VICTORY; break; }
       mapNumber++;
       if (mapNumber > MAP_COUNT) state = GameState.VICTORY;
       else {
@@ -256,7 +263,7 @@ function drawIntroScreen() {
   textAlign(CENTER, BASELINE);
   fill(255);
   textSize(70);
-  text("SPRITE QUEST", width / 2, 300);
+  text(customMap ? "CUSTOM QUEST" : "SPRITE QUEST", width / 2, 300);
   fill(125);
   textSize(30);
   text("Arrow to Move, X shoot water, space restart, z sprint, r reselect", width / 2, 380);
@@ -276,7 +283,7 @@ function drawLevelScreen() {
   rect(200, 500, 600, 20);
   fill(255);
   textSize(40);
-  text(`Level${mapNumber}`, 650, 300);
+  text(customMap ? "Custom map" : `Level${mapNumber}`, 650, 300);
   rect(500, 400, 600 * percent, 20);
   fill(255);
   textSize(40);
@@ -288,7 +295,8 @@ function drawVictoryScreen() {
   drawEndScreen("You win!", `You earn ${coinScore} coin`, "Press [SPACEBAR]", 500);
   fill(255);
   textSize(38);
-  text("Press [E] for Endless Mode", 460, 650);
+  if (!customMap) text("Press [E] for Endless Mode", 460, 650);
+  else text("Map complete! Return to the editor to keep building.", 280, 650);
 }
 
 function drawLoseScreen() {
@@ -312,6 +320,8 @@ function drawEndScreen(title, subtitle, prompt, promptX) {
 }
 
 function startNewGame() {
+  if (!gameReady) return;
+  clearInputState();
   endlessMode = false;
   mapNumber = 1;
   coinScore = 0;
@@ -324,6 +334,7 @@ function startNewGame() {
 }
 
 function startEndlessMode() {
+  if (customMap) return;
   endlessMode = true;
   mapNumber = MAP_COUNT;
   timerStart = millis();
@@ -338,24 +349,32 @@ function loadLevel(number) {
   projectiles = [];
   waterProjectiles = [];
   enemies = [];
-  const lines = mapLines[number];
+  const lines = customMap ? customMap.lines : mapLines[number];
   world = new World(lines);
   worldWidth = world.cols * TILE_SIZE;
   worldHeight = world.rows * TILE_SIZE;
   enemies = createEnemiesForMap();
   viewX = viewY = 0;
   resetMage();
+  if (customMap) {
+    viewX = constrain(mage.x - GAME_WIDTH / 2, 0, max(0, worldWidth - GAME_WIDTH));
+    viewY = constrain(mage.y - GAME_HEIGHT / 2, 0, max(0, worldHeight - GAME_HEIGHT));
+  }
 }
 
 function resetMage() {
-  mage.x = 250; mage.y = 400; mage.xVelocity = 0; mage.yVelocity = 0;
+  mage.x = customMap ? customMap.spawn.col * TILE_SIZE : 250;
+  mage.y = customMap ? customMap.spawn.row * TILE_SIZE : 400;
+  mage.xVelocity = 0; mage.yVelocity = 0; mage.onGround = false;
   mage.resetSprintState();
+  mage.lastShotFrame = -BASE_SHOT_COOLDOWN;
   projectiles = []; waterProjectiles = [];
   if (selectedDifficulty !== Difficulty.EASY) resetEnemies();
   resetMageRequested = false;
 }
 
 function createEnemiesForMap() {
+  if (customMap) return world.enemySpawns.map(spawn => new Enemy(spawn.x, spawn.y, getBoneCoinValue(), getBoneExperienceValue()));
   const result = [];
   const spawnX = world.getEnemySpawnX();
   for (let i = 0; i < getSpawnEnemyCount(); i++) {
@@ -370,6 +389,11 @@ function resetEnemies() {
 }
 
 function respawnEnemy(enemy, index) {
+  if (customMap) {
+    Object.assign(enemy, world.enemySpawns[index]);
+    enemy.resetState();
+    return;
+  }
   const spawnX = world.getEnemySpawnX();
   enemy.x = constrain(spawnX + ENEMY_SPAWN_OFFSETS[index], 0, max(0, worldWidth - SPRITE_WIDTH));
   enemy.y = world.findGroundY(enemy.x);
@@ -392,6 +416,7 @@ function clearInputState() {
 }
 
 function handleKeyDown(event) {
+  if (editorActive || !gameReady || event.target.closest?.("input, select, textarea, button, a, [contenteditable='true']")) return;
   const code = event.code;
   if (["ArrowLeft", "ArrowRight", "ArrowUp", "Space"].includes(code)) event.preventDefault();
   userStartAudio();
@@ -410,12 +435,15 @@ function handleKeyDown(event) {
   else if (code === "Digit2" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.NORMAL;
   else if (code === "Digit3" && ![GameState.PLAYING, GameState.LOADING].includes(state)) selectedDifficulty = Difficulty.HARD;
   else if (code === "KeyX") mage.shootWater();
-  else if (code === "Space" && !event.repeat) resetMageRequested = true;
+  else if (code === "Space" && !event.repeat) {
+    if (customMap) startNewGame();
+    else resetMageRequested = true;
+  }
 }
 
 function handleKeyUp(event) {
   const code = event.code;
-  if (["ArrowLeft", "ArrowRight", "ArrowUp", "Space"].includes(code)) event.preventDefault();
+  if (!editorActive && !event.target.closest?.("input, select, textarea, button, a") && ["ArrowLeft", "ArrowRight", "ArrowUp", "Space"].includes(code)) event.preventDefault();
   heldKeys.delete(code);
 }
 
@@ -623,21 +651,25 @@ function rectanglesOverlap(ax, ay, aw, ah, bx, by, bw, bh) {
 
 class World {
   constructor(lines) {
-    this.rows = lines.length; this.cols = lines[0].split(",").length;
+    this.grid = SpriteMap.parseCSV(lines.join("\n"));
+    this.rows = this.grid.length; this.cols = this.grid[0].length;
     this.tileGrid = Array.from({ length: this.cols }, () => Array(this.rows).fill(null));
     this.enemySpawnX = null;
-    this.createPlatforms(lines);
+    this.enemySpawns = [];
+    this.createPlatforms();
   }
-  createPlatforms(lines) {
-    const tileImages = { "1": images.red_brick, "2": images.snow, "3": images.brown_brick, "4": images.crate, "8": images.water };
+  createPlatforms() {
+    const tileImages = Object.fromEntries(SpriteMap.tiles.filter(tile => tile.solid).map(tile => [tile.code, images[tile.image]]));
     const collectiblesByCode = { "5": [images.gold1, "coin"], "6": [images.gem1, "gem"], "7": [images.magma, "magma"] };
-    lines.forEach((line, row) => line.split(",").forEach((raw, col) => {
-      const value = raw.trim();
+    this.grid.forEach((line, row) => line.forEach((value, col) => {
       if (tileImages[value]) this.tileGrid[col][row] = new Platform(col * TILE_SIZE, row * TILE_SIZE, tileImages[value], TILE_SIZE);
       else if (collectiblesByCode[value]) {
         const [img, type] = collectiblesByCode[value];
         collectibles.push(new Collectible(col * TILE_SIZE, row * TILE_SIZE, img, TILE_SIZE, type));
-      } else if (value === "9") this.enemySpawnX = col * TILE_SIZE;
+      } else if (value === 9) {
+        this.enemySpawnX = col * TILE_SIZE;
+        this.enemySpawns.push({ x: col * TILE_SIZE, y: row * TILE_SIZE });
+      }
     }));
   }
   drawTiles() { for (const column of this.tileGrid) for (const tile of column) if (tile) tile.display(); }
